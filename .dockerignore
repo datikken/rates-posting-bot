@@ -1,0 +1,8 @@
+README.md
+/node_modules
+.DS_Store
+/.env
+.gitignore
+.gitlab-ci.yml
+.git/
+database.sqlite

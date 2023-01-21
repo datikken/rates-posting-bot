@@ -1,0 +1,5 @@
+---
+log_driver: gelf
+log_options_backend:
+    gelf-address: "udp://graylog.ctgroup.io:12201"
+    tag: "{{ tag }}.rates-bot"

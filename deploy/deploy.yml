@@ -1,0 +1,61 @@
+---
+- hosts: all
+  any_errors_fatal: true
+  gather_facts: false
+  tasks:
+  - name: "Include variables"
+    include_vars: "{{ item }}"
+    with_items:
+    - vars/{{ tag }}
+    - vars/{{ tag }}.vault
+
+  - name: "Log into docker private registry and force re-authorization"
+    docker_login:
+      registry: registry.ctgroup.io
+      username: "gitlab-ci-token"
+      password: "{{ lookup('env', 'CI_BUILD_TOKEN') }}"
+      reauthorize: true
+
+  - name: "Ensure that {{ rate_bot_db_folder }} exists"
+    block:
+      - name: "get {{ rate_bot_db_folder }} status"
+        stat:
+          path: "{{ rate_bot_db_folder }}"
+        register: rate_bot_db_folder_stat
+
+      - name: "Create {{ rate_bot_db_folder }} if not exists"
+        file:
+          path: "{{ rate_bot_db_folder }}"
+          state: directory
+        when:
+          - rate_bot_db_folder_stat.stat.exists == false
+
+  - name: create volume for mysql
+    docker_volume:
+      name: "{{ rate_bot_db_volume_name }}"
+      driver_options:
+        type: volume
+        device: "{{ rate_bot_db_folder }}"
+        o: bind
+
+  - name: "Start the {{current_progect_name}}_{{ tag }} container"
+    docker_container:
+      name: "{{ backend_contanner_name }}"
+      image: "{{ backend_image }}"
+      recreate: true
+      restart_policy: always
+      pull: true
+      labels:
+        service: "rates-bot"
+        tier: "backend"
+      env:
+        BOT_TOKEN: "{{ BOT_TOKEN }}"
+        TICKER_URL: "{{ TICKER_URL }}"
+        URL: "{{ URL }}"
+        PORT: "{{ PORT }}"
+        actual_commit: "{{ actual_commit }}"
+        ENV: "production"
+      volumes:
+        - "{{ rate_bot_db_folder }}/database.sqlite:/usr/src/app/database.sqlite"
+      log_driver: "{{ log_driver }}"
+      log_options: "{{ log_options_backend }}"

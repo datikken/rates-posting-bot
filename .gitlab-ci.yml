@@ -1,0 +1,68 @@
+stages:
+- build
+- deploy
+
+variables:
+  DOCKER_IMAGE: registry.ctgroup.io/cointelegraph/rates-posting-bot/bot
+  STAGE_IMAGE: $DOCKER_IMAGE:stage
+  RC_IMAGE: $DOCKER_IMAGE:rc
+  DOCKER_REGISTRY_RC: 459919404924.dkr.ecr.us-east-1.amazonaws.com
+  QA_IMAGE: $DOCKER_IMAGE:qa
+  PRODUCTION_IMAGE: $DOCKER_IMAGE:production
+
+build and deploy rc image:
+  stage: build
+  allow_failure: false
+  script:
+  - sudo docker build --no-cache -t $RC_IMAGE .
+  - aws ecr get-login-password | docker login --username AWS --password-stdin $DOCKER_REGISTRY_RC
+  - docker tag $RC_IMAGE 459919404924.dkr.ecr.us-east-1.amazonaws.com/ct-dev/rates-bot:rc
+  - docker push $DOCKER_REGISTRY_RC/ct-dev/rates-bot:rc
+  - kubectl rollout restart deployment rates-bot -n ct-dev
+  tags:
+  - eks-dev
+  only:
+  - rc
+
+build production image:
+  stage: build
+  script:
+    - docker login -u gitlab-ci-token -p $CI_BUILD_TOKEN registry.ctgroup.io
+    - docker build --no-cache -t $PRODUCTION_IMAGE .
+    - docker push $PRODUCTION_IMAGE
+  only:
+    - production
+  tags:
+    - docker
+  when: manual
+
+
+deploy production image:
+  stage: deploy
+  script:
+    - ansible-playbook -i deploy/inventory/inventory.ini --limit production --extra-vars "@deploy/extra_vars.yml"  deploy/deploy.yml
+  only:
+    - production
+  tags:
+    - ansible
+  when: manual
+
+build qa image:
+  stage: build
+  script:
+    - docker login -u gitlab-ci-token -p $CI_BUILD_TOKEN registry.ctgroup.io
+    - docker build --no-cache -t $QA_IMAGE .
+    - docker push $QA_IMAGE
+  only:
+    - qa
+  tags:
+    - docker
+
+deploy qa image:
+  stage: deploy
+  script:
+    - ansible-playbook -i deploy/inventory/inventory.ini --limit qa --extra-vars "@deploy/extra_vars.yml"  deploy/deploy.yml
+  only:
+    - qa
+  tags:
+    - ansible
